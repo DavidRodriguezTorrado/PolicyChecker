@@ -164,18 +164,24 @@ async def delete_chat(page):
         turn (int): The conversation turn number to target.
     """
     # Define the selector for the target div with escaped colons
-    div_selector = 'div.absolute.bottom-0.top-0.can-hover\\:group-hover\\:from-token-sidebar-surface-secondary'
+    chat_selector = 'div.absolute.bottom-0.top-0.can-hover\\:group-hover\\:from-token-sidebar-surface-secondary'
 
     # Define the selector for the button that appears after hovering
     # Ensure that the button is within the specific article corresponding to the current turn
     button_selector = 'button[data-testid="history-item-0-options"]'
 
     try:
-        # Wait for the target div to be present in the DOM
-        await page.waitForSelector(div_selector, timeout=10000)  # waits up to 10 seconds
+        # Wait for the target chat to be present in the DOM
+        await page.waitForSelector(chat_selector, timeout=10000)  # waits up to 10 seconds
 
-        # Perform a hover over the div
-        await page.hover(div_selector)
+        # Use a random start coordinate before moving to target to simulate human-like approach
+        random_start_x = random.randint(0, 100)
+        random_start_y = random.randint(0, 100)
+        await page.mouse.move(random_start_x, random_start_y, steps=5)
+        await asyncio.sleep(random.uniform(0.2, 0.5))
+
+        # Perform a hover over the chat
+        await page.hover(chat_selector)
 
         # Wait for the new button to appear within the specific article
         await page.waitForSelector(button_selector, timeout=10000)
@@ -185,11 +191,12 @@ async def delete_chat(page):
 
         options = 'div[role="menuitem"]'
         elements = await page.querySelectorAll(options)
+        await asyncio.sleep(random.uniform(0.3, 0.8))  # Random delay before selecting an option
         await elements[-1].click()
 
         confirm_deletion = 'button[data-testid="delete-conversation-confirm-button"]'
         await page.waitForSelector(confirm_deletion, timeout=10000)
-
+        await asyncio.sleep(random.uniform(0.4, 1.2))  # Add hesitation before confirming
         await human_like_click(page, confirm_deletion)
 
     except asyncio.TimeoutError:
