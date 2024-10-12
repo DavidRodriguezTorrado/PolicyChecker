@@ -92,14 +92,10 @@ async def prompt_and_response(page, prompt_message, turn=3):
     # Perform a human-like click on the button: send message
     await human_like_click(page, 'button[data-testid="send-button"]')
 
-    # Wait for the button with the specific data-testid to appear
-    await page.waitForSelector('button[data-testid="voice-play-turn-action-button"]')
-
-    # This time.sleep allows us to make sure that the whole message has been updated in the html
-    time.sleep(5)
-
-    # [Getting the Response] Wait for the article element to appear (you can also use div or other selectors)
-    await page.waitForSelector('article[data-testid="conversation-turn-{}"]'.format(turn))
+    # [Waiting for Answer] Wait specifically for the voice-play button inside the targeted article
+    await page.waitForSelector(
+        f'article[data-testid="conversation-turn-{turn}"] button[data-testid="voice-play-turn-action-button"]'
+    )
 
     # Use backticks for template literals in JavaScript to incorporate the 'turn' variable
     # article_html = await page.evaluate(
@@ -110,7 +106,7 @@ async def prompt_and_response(page, prompt_message, turn=3):
     #     turn  # Pass 'turn' as an argument
     # )
 
-    # Use backticks for template literals in JavaScript to incorporate the 'turn' variable
+    # [Retrieve Answer] Use backticks for template literals in JavaScript to incorporate the 'turn' variable
     article_html = await page.evaluate(
         '''(turn) => {
             const element = document.querySelector(`article[data-testid="conversation-turn-${turn}"] div[data-message-author-role="assistant"]`);
@@ -158,6 +154,50 @@ async def initialize_browser():
     return browser, page
 
 
+# Function to perform hover over the div and click the revealed button
+async def delete_chat(page):
+    """
+    Hovers over a specific div to reveal a button and clicks the button.
+
+    Args:
+        page: The Pyppeteer page object.
+        turn (int): The conversation turn number to target.
+    """
+    # Define the selector for the target div with escaped colons
+    div_selector = 'div.absolute.bottom-0.top-0.can-hover\\:group-hover\\:from-token-sidebar-surface-secondary'
+
+    # Define the selector for the button that appears after hovering
+    # Ensure that the button is within the specific article corresponding to the current turn
+    button_selector = 'button[data-testid="history-item-0-options"]'
+
+    try:
+        # Wait for the target div to be present in the DOM
+        await page.waitForSelector(div_selector, timeout=10000)  # waits up to 10 seconds
+
+        # Perform a hover over the div
+        await page.hover(div_selector)
+
+        # Wait for the new button to appear within the specific article
+        await page.waitForSelector(button_selector, timeout=10000)
+
+        # Perform a human-like click on the new button
+        await human_like_click(page, button_selector)
+
+        options = 'div[role="menuitem"]'
+        elements = await page.querySelectorAll(options)
+        await elements[-1].click()
+
+        confirm_deletion = 'button[data-testid="delete-conversation-confirm-button"]'
+        await page.waitForSelector(confirm_deletion, timeout=10000)
+
+        await human_like_click(page, confirm_deletion)
+
+    except asyncio.TimeoutError:
+        print(f"Timeout: The target div or the button '{button_selector}' was not found.")
+    except Exception as e:
+        print(f"An error occurred in hover_and_click: {e}")
+
+
 # Function to automate Puppeteer using the retrieved WebSocket URL
 async def run():
     # Before run(), the following command should be executed in a terminal
@@ -173,7 +213,7 @@ async def run():
     # Perform automation tasks (add your custom code here)
     print("Page loaded. You can now interact with the page...")
 
-    # Wait for the contenteditable div to appear [Write prompt]
+    # [Write prompt] Wait for the contenteditable div to appear
     await page.waitForSelector('div#prompt-textarea[contenteditable="true"]')
 
     # Here it goes the exchange of messages with the Chatbot:
