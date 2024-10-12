@@ -101,10 +101,18 @@ async def prompt_and_response(page, prompt_message, turn=3):
     await page.waitForSelector('article[data-testid="conversation-turn-{}"]'.format(turn))
 
     # Use backticks for template literals in JavaScript to incorporate the 'turn' variable
+    # article_html = await page.evaluate(
+    #     '''(turn) => {
+    #         const element = document.querySelector(`article[data-testid="conversation-turn-${turn}"]`);
+    #         return element ? element.innerHTML : "";
+    #     }''',
+    #     turn  # Pass 'turn' as an argument
+    # )
+
     article_html = await page.evaluate(
         '''(turn) => {
-            const element = document.querySelector(`article[data-testid="conversation-turn-${turn}"]`);
-            return element ? element.innerHTML : "";
+            const element = document.querySelector(`article[data-testid="conversation-turn-${turn}"] div[data-message-author-role="assistant"]`);
+            return element ? element.innerText : "";  // Fetch the innerText to keep formatting
         }''',
         turn  # Pass 'turn' as an argument
     )
@@ -115,6 +123,8 @@ async def prompt_and_response(page, prompt_message, turn=3):
 
 # Function to automate Puppeteer using the retrieved WebSocket URL
 async def run():
+    """"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222"""
+
     websocket_url = get_websocket_debugger_url()
     if not websocket_url:
         print("Failed to retrieve WebSocket Debugger URL.")
@@ -155,15 +165,16 @@ async def run():
     await page.waitForSelector('div#prompt-textarea[contenteditable="true"]')
 
     # Here it goes the exchange of messages with the Chatbot:
+    # List of prompts to be used in the loop
+    prompts = ['Tell me a joke', 'Tell me another joke', 'What is the weather today?', 'What is your favorite color?']
     # Turn means which turn of the conversation we are at now. First response has turn 3 as per the HTML element numbering defined.
-    response = await prompt_and_response(page=page, prompt_message='Tell me a joke', turn=3) # Investigate domain, provide links: microsoft.com
-    print(f"Extracted Response: {response}")
+    turn = 3
 
-    # Here it goes the exchange of messages with the Chatbot:
-    # Turn means which turn of the conversation we are at now. First response has turn 3 as per the HTML element numbering defined.
-    response = await prompt_and_response(page=page, prompt_message='Tell me another joke', turn=5)
-    print(f"Extracted Response: {response}")
-
+    # Loop through prompts and get responses
+    for prompt in prompts:
+        response = await prompt_and_response(page=page, prompt_message=prompt, turn=turn)
+        print(f"Extracted Response: {response}")
+        turn += 2
 
     # Keep the browser open
     await asyncio.sleep(100000)  # Keep the browser open for a long time (adjust as needed)
