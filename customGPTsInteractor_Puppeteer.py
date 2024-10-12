@@ -92,10 +92,11 @@ async def prompt_and_response(page, prompt_message, turn=3):
     # Perform a human-like click on the button: send message
     await human_like_click(page, 'button[data-testid="send-button"]')
 
-    time.sleep(5)
-
     # Wait for the button with the specific data-testid to appear
     await page.waitForSelector('button[data-testid="voice-play-turn-action-button"]')
+
+    # This time.sleep allows us to make sure that the whole message has been updated in the html
+    time.sleep(5)
 
     # [Getting the Response] Wait for the article element to appear (you can also use div or other selectors)
     await page.waitForSelector('article[data-testid="conversation-turn-{}"]'.format(turn))
@@ -104,15 +105,16 @@ async def prompt_and_response(page, prompt_message, turn=3):
     # article_html = await page.evaluate(
     #     '''(turn) => {
     #         const element = document.querySelector(`article[data-testid="conversation-turn-${turn}"]`);
-    #         return element ? element.innerHTML : "";
+    #         return element ? element.outerHTML : "";
     #     }''',
     #     turn  # Pass 'turn' as an argument
     # )
 
+    # Use backticks for template literals in JavaScript to incorporate the 'turn' variable
     article_html = await page.evaluate(
         '''(turn) => {
             const element = document.querySelector(`article[data-testid="conversation-turn-${turn}"] div[data-message-author-role="assistant"]`);
-            return element ? element.innerText : "";  // Fetch the innerText to keep formatting
+            return element ? element.outerHTML : "";  // Fetch the outerHTML to get the raw HTML content
         }''',
         turn  # Pass 'turn' as an argument
     )
@@ -121,14 +123,13 @@ async def prompt_and_response(page, prompt_message, turn=3):
     return markdown
 
 
-# Function to automate Puppeteer using the retrieved WebSocket URL
-async def run():
-    """"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222"""
-
+# Function to initialize browser and page
+async def initialize_browser():
+    """Initialize the browser and page with required settings."""
     websocket_url = get_websocket_debugger_url()
     if not websocket_url:
         print("Failed to retrieve WebSocket Debugger URL.")
-        return
+        return None, None
 
     # Connect to the running Chrome instance using the WebSocket URL
     browser = await connect(browserWSEndpoint=websocket_url)
@@ -153,6 +154,17 @@ async def run():
             get: () => undefined,
         });
     """)
+
+    return browser, page
+
+
+# Function to automate Puppeteer using the retrieved WebSocket URL
+async def run():
+    # Before run(), the following command should be executed in a terminal
+    """"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222"""
+    browser, page = await initialize_browser()
+    if not browser or not page:
+        return
 
     # https://chat.openai.com/gpts
     # await page.goto('https://chatgpt.com/g/g-aZQ1x6vqB-ai-osint')
