@@ -230,9 +230,9 @@ async def search_gpts_by_keywords(page, search_text):
     await page.click(parent_div_selector)
 
     is_visible = await page.evaluate('''() => {
-            const el = document.querySelector('input[placeholder="Buscar GPT"]');
-            return el && el.offsetParent !== null;
-        }''')
+        const el = document.querySelector('input[placeholder="Buscar GPT"]');
+        return el && el.offsetParent !== null;
+    }''')
 
     if not is_visible:
         await page.evaluate('''() => {
@@ -273,15 +273,87 @@ async def search_gpts_by_keywords(page, search_text):
         text_list = text_value.split('\n')
         title = text_list[0]
         description = text_list[1]
-        developer = text_list[2][text_list[2].find(' ')+1:]
+        developer = text_list[2][text_list[2].find(' ') + 1:]
         num_conversations = text_list[3]
 
-        # Now click on the element and retrieve more information
+        # Click on the element to open the GPT details
         await link.click()
 
-        gpts.append([title, description, developer, num_conversations])
+        # Wait for the spinner to disappear (meaning results have been found)
+        await page.waitForFunction('document.querySelector("svg.animate-spin") === null')
+
+        # Wait for the GPT details page to load
+        await page.waitForSelector('div.text-2xl.font-semibold', {'visible': True})
+
+        # Retrieve the category
+        category = await page.evaluate('''() => {
+            const elements = Array.from(document.querySelectorAll('div'));
+            // Filter for elements that match all the class criteria
+            const matchingElements = elements.filter(el => el.classList.contains('flex') &&
+                                                           el.classList.contains('flex-row') &&
+                                                           el.classList.contains('items-center') &&
+                                                           el.classList.contains('gap-1.5') &&
+                                                           el.classList.contains('pt-1') &&
+                                                           el.classList.contains('text-xl') &&
+                                                           el.classList.contains('font-semibold') &&
+                                                           el.classList.contains('text-center') &&
+                                                           el.classList.contains('leading-none'));
+            // Assuming the category is the second occurrence, we access index 1
+            const categoryElement = matchingElements.length > 1 ? matchingElements[1] : null;
+            return categoryElement ? categoryElement.innerText.trim() : '';
+        }''')
+
+        rating_value = await page.evaluate('''() => {
+                    const elements = Array.from(document.querySelectorAll('div'));
+                    // Filter for elements that match all the class criteria
+                    const matchingElements = elements.filter(el => el.classList.contains('flex') &&
+                                                                   el.classList.contains('flex-row') &&
+                                                                   el.classList.contains('items-center') &&
+                                                                   el.classList.contains('gap-1.5') &&
+                                                                   el.classList.contains('pt-1') &&
+                                                                   el.classList.contains('text-xl') &&
+                                                                   el.classList.contains('font-semibold') &&
+                                                                   el.classList.contains('text-center') &&
+                                                                   el.classList.contains('leading-none'));
+                    // Assuming the category is the second occurrence, we access index 1
+                    const categoryElement = matchingElements.length > 1 ? matchingElements[0] : null;
+                    return categoryElement ? categoryElement.innerText.trim() : '';
+                }''')
+
+        num_ratings = await page.evaluate('''() => {
+            const elements = Array.from(document.querySelectorAll('div'));
+            const ratingElement = elements.find(el => el.innerText && el.innerText.includes('Valoraciones'));
+            return ratingElement ? ratingElement.innerText.match(/(\d+)\+/)?.[0] : null;
+        }''')
+
+        sample_prompts = await page.evaluate('''() => {
+            const elements = Array.from(document.querySelectorAll('a[href*="?q="]'));
+            return elements.map(el => el.innerText.trim());
+        }''')
+
+        chat_url = await page.evaluate('''() => {
+            const button = document.querySelector('a.btn-primary[href*="/g/"]');
+            return button ? button.href : null;
+        }''')
+
+        gpts.append({
+            'title': title,
+            'description': description,
+            'developer': developer,
+            'num_conversations': num_conversations,
+            'category': category,
+            'rating_value': rating_value,
+            'num_ratings': num_ratings,
+            'sample_prompts': sample_prompts,
+            'chat_url': chat_url
+        })
+        break
+        # Go back to the search results page
+        # await page.goBack({'waitUntil': 'networkidle2'})
 
     return gpts
+
+
 
 
 # Function to automate Puppeteer using the retrieved WebSocket URL
