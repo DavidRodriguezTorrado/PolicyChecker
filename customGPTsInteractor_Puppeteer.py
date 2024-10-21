@@ -259,26 +259,26 @@ async def search_gpts_by_keywords(page, search_text):
     # Look for the results
     await page.waitForSelector('[id^="headlessui-popover-panel-"]', {'visible': True})
 
-    # Query all <a> tags within the div
-    links = await page.evaluate('''() => {
-        return Array.from(document.querySelectorAll('[id^="headlessui-popover-panel-"] a')).map(anchor => {
-            return {
-                href: anchor.href,
-                text: anchor.innerText,
-                html: anchor.outerHTML
-            };
-        });
-    }''')
+    # Get all the <a> elements within the specified div using a CSS selector
+    links = await page.querySelectorAll('[id^="headlessui-popover-panel-"] a')
 
     gpts = []
 
-    # Print out the collected links
+    # Iterate over the ElementHandles to interact with each link
     for link in links:
-        text_dict = link['text'].split('\n')
-        title = text_dict[0]
-        description = text_dict[1]
-        developer = text_dict[2][text_dict[2].find(' ')+1:]
-        num_conversations = text_dict[3]
+        text = await link.getProperty('innerText')
+        text_value = await text.jsonValue()
+
+        # Get the information from the search list.
+        text_list = text_value.split('\n')
+        title = text_list[0]
+        description = text_list[1]
+        developer = text_list[2][text_list[2].find(' ')+1:]
+        num_conversations = text_list[3]
+
+        # Now click on the element and retrieve more information
+        await link.click()
+
         gpts.append([title, description, developer, num_conversations])
 
     return gpts
