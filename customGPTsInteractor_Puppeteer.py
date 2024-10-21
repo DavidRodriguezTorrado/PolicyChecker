@@ -222,8 +222,6 @@ async def interact_with_gpt_model(page, prompts, model='auto'):
     return responses
 
 
-from datetime import datetime
-
 async def search_gpts_by_keywords(page, search_text, max_clicks=1):
     await page.goto('https://chat.openai.com/gpts', {'waitUntil': 'networkidle2'})
     # Wait for the parent div containing the input field to be visible
