@@ -220,6 +220,70 @@ async def interact_with_gpt_model(page, prompts, model='auto'):
     return responses
 
 
+async def search_gpts_by_keywords(page, search_text):
+    await page.goto('https://chat.openai.com/gpts', {'waitUntil': 'networkidle2'})
+    # Wait for the parent div containing the input field to be visible
+    parent_div_selector = 'div.group.relative.rounded-xl.z-20.mb-6.mt-2.flex-grow'
+    await page.waitForSelector(parent_div_selector, {'visible': True})
+
+    # Click on the parent div
+    await page.click(parent_div_selector)
+
+    is_visible = await page.evaluate('''() => {
+            const el = document.querySelector('input[placeholder="Buscar GPT"]');
+            return el && el.offsetParent !== null;
+        }''')
+
+    if not is_visible:
+        await page.evaluate('''() => {
+            const el = document.querySelector('input[placeholder="Buscar GPT"]');
+            if (el) el.scrollIntoView();
+        }''')
+        await asyncio.sleep(0.5)  # Wait for the element to be visible
+
+    # Focus on the input field
+    await page.evaluate('''() => {
+        const el = document.querySelector('input[placeholder="Buscar GPT"]');
+        if (el) el.focus();
+    }''')
+
+    # Write down the text to search GPTs
+    await human_like_typing(page=page, selector='input[placeholder="Buscar GPT"]', text=search_text)
+
+    # Wait for the spinner to appear first (meaning it's processing our request)
+    await page.waitForSelector('svg.animate-spin', {'visible': True})
+
+    # Wait for the spinner to disappear (meaning results have been found)
+    await page.waitForFunction('document.querySelector("svg.animate-spin") === null')
+
+    # Look for the results
+    await page.waitForSelector('[id^="headlessui-popover-panel-"]', {'visible': True})
+
+    # Query all <a> tags within the div
+    links = await page.evaluate('''() => {
+        return Array.from(document.querySelectorAll('[id^="headlessui-popover-panel-"] a')).map(anchor => {
+            return {
+                href: anchor.href,
+                text: anchor.innerText,
+                html: anchor.outerHTML
+            };
+        });
+    }''')
+
+    gpts = []
+
+    # Print out the collected links
+    for link in links:
+        text_dict = link['text'].split('\n')
+        title = text_dict[0]
+        description = text_dict[1]
+        developer = text_dict[2][text_dict[2].find(' ')+1:]
+        num_conversations = text_dict[3]
+        gpts.append([title, description, developer, num_conversations])
+
+    return gpts
+
+
 # Function to automate Puppeteer using the retrieved WebSocket URL
 async def run():
     # Before run(), the following command should be executed in a terminal
@@ -228,8 +292,12 @@ async def run():
     if not browser or not page:
         return
 
-    input_prompts = ['Tell me a joke', 'Tell me another joke', 'What is the weather today?', 'What is your favorite color?']
-    responses = await interact_with_gpt_model(page=page, prompts=input_prompts, model='auto')
+    # input_prompts = ['Tell me a joke', 'Tell me another joke', 'What is the weather today?', 'What is your favorite color?']
+    # responses = await interact_with_gpt_model(page=page, prompts=input_prompts, model='auto')
+
+    gpts = await search_gpts_by_keywords(page=page, search_text='doctor')
+    for gpt in gpts:
+        print(gpt)
 
     # Keep the browser open
     await asyncio.sleep(100000)  # Keep the browser open for a long time (adjust as needed)
