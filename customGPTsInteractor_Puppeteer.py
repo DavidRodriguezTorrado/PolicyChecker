@@ -1,6 +1,7 @@
 import time
 from markdownify import markdownify as md
 import requests
+from datetime import datetime
 import json
 from pyppeteer import connect
 import asyncio
@@ -195,6 +196,7 @@ async def prompt_and_response(page, prompt_message, turn=3):
     markdown = convert_markdownify(article_html)
     return markdown
 
+
 async def interact_with_gpt_model(page, prompts, model='auto'):
     # https://chat.openai.com/gpts
     # await page.goto('https://chatgpt.com/g/g-aZQ1x6vqB-ai-osint')
@@ -220,7 +222,9 @@ async def interact_with_gpt_model(page, prompts, model='auto'):
     return responses
 
 
-async def search_gpts_by_keywords(page, search_text):
+from datetime import datetime
+
+async def search_gpts_by_keywords(page, search_text, max_clicks=1):
     await page.goto('https://chat.openai.com/gpts', {'waitUntil': 'networkidle2'})
     # Wait for the parent div containing the input field to be visible
     parent_div_selector = 'div.group.relative.rounded-xl.z-20.mb-6.mt-2.flex-grow'
@@ -256,100 +260,147 @@ async def search_gpts_by_keywords(page, search_text):
     # Wait for the spinner to disappear (meaning results have been found)
     await page.waitForFunction('document.querySelector("svg.animate-spin") === null')
 
-    # Look for the results
-    await page.waitForSelector('[id^="headlessui-popover-panel-"]', {'visible': True})
-
-    # Get all the <a> elements within the specified div using a CSS selector
-    links = await page.querySelectorAll('[id^="headlessui-popover-panel-"] a')
-
+    # Initialize data collection
     gpts = []
+    unique_keys = set()  # Set to keep track of unique (title, description, developer)
 
-    # Iterate over the ElementHandles to interact with each link
-    for link in links:
-        text = await link.getProperty('innerText')
-        text_value = await text.jsonValue()
+    # Define a helper function to gather GPT data
+    async def gather_gpt_data():
+        nonlocal gpts, unique_keys
+        # Look for the results
+        await page.waitForSelector('[id^="headlessui-popover-panel-"]', {'visible': True})
 
-        # Get the information from the search list.
-        text_list = text_value.split('\n')
-        title = text_list[0]
-        description = text_list[1]
-        developer = text_list[2][text_list[2].find(' ') + 1:]
-        num_conversations = text_list[3]
+        # Get all the <a> elements within the specified div using a CSS selector
+        links = await page.querySelectorAll('[id^="headlessui-popover-panel-"] a')
 
-        # Click on the element to open the GPT details
-        await link.click()
+        # Iterate over the ElementHandles to interact with each link
+        for link in links:
+            text = await link.getProperty('innerText')
+            text_value = await text.jsonValue()
 
-        # Wait for the spinner to disappear (meaning results have been found)
-        await page.waitForFunction('document.querySelector("svg.animate-spin") === null')
+            # Get the information from the search list.
+            text_list = text_value.split('\n')
 
-        # Wait for the GPT details page to load
-        await page.waitForSelector('div.text-2xl.font-semibold', {'visible': True})
+            # Default values for each field
+            title = text_list[0] if len(text_list) > 0 else ''
+            description = ''
+            developer = ''
+            num_conversations = ''
 
-        # Retrieve the category
-        category = await page.evaluate('''() => {
-            const elements = Array.from(document.querySelectorAll('div'));
-            // Filter for elements that match all the class criteria
-            const matchingElements = elements.filter(el => el.classList.contains('flex') &&
-                                                           el.classList.contains('flex-row') &&
-                                                           el.classList.contains('items-center') &&
-                                                           el.classList.contains('gap-1.5') &&
-                                                           el.classList.contains('pt-1') &&
-                                                           el.classList.contains('text-xl') &&
-                                                           el.classList.contains('font-semibold') &&
-                                                           el.classList.contains('text-center') &&
-                                                           el.classList.contains('leading-none'));
-            // Assuming the category is the second occurrence, we access index 1
-            const categoryElement = matchingElements.length > 1 ? matchingElements[1] : null;
-            return categoryElement ? categoryElement.innerText.trim() : '';
-        }''')
+            # Check if there's a description and developer
+            if len(text_list) > 2:
+                description = text_list[1]
+                developer = text_list[2][text_list[2].find(' ') + 1:]
+                num_conversations = text_list[3] if len(text_list) > 3 else ''
+            elif len(text_list) == 2:
+                # If there's no description, assume the second element is the developer
+                developer = text_list[1][text_list[1].find(' ') + 1:]
+                num_conversations = text_list[2] if len(text_list) > 2 else ''
 
-        rating_value = await page.evaluate('''() => {
-                    const elements = Array.from(document.querySelectorAll('div'));
-                    // Filter for elements that match all the class criteria
-                    const matchingElements = elements.filter(el => el.classList.contains('flex') &&
-                                                                   el.classList.contains('flex-row') &&
-                                                                   el.classList.contains('items-center') &&
-                                                                   el.classList.contains('gap-1.5') &&
-                                                                   el.classList.contains('pt-1') &&
-                                                                   el.classList.contains('text-xl') &&
-                                                                   el.classList.contains('font-semibold') &&
-                                                                   el.classList.contains('text-center') &&
-                                                                   el.classList.contains('leading-none'));
-                    // Assuming the category is the second occurrence, we access index 1
-                    const categoryElement = matchingElements.length > 1 ? matchingElements[0] : null;
-                    return categoryElement ? categoryElement.innerText.trim() : '';
-                }''')
+            # Create a unique key for each GPT
+            key = (title, description, developer)
 
-        num_ratings = await page.evaluate('''() => {
-            const elements = Array.from(document.querySelectorAll('div'));
-            const ratingElement = elements.find(el => el.innerText && el.innerText.includes('Valoraciones'));
-            return ratingElement ? ratingElement.innerText.match(/(\d+)\+/)?.[0] : null;
-        }''')
+            # Check if this GPT is already processed
+            if key in unique_keys:
+                continue
 
-        sample_prompts = await page.evaluate('''() => {
-            const elements = Array.from(document.querySelectorAll('a[href*="?q="]'));
-            return elements.map(el => el.innerText.trim());
-        }''')
+            # Mark this GPT as processed
+            unique_keys.add(key)
 
-        chat_url = await page.evaluate('''() => {
-            const button = document.querySelector('a.btn-primary[href*="/g/"]');
-            return button ? button.href : null;
-        }''')
+            # Click on the element to open the GPT details
+            await link.click()
 
-        gpts.append({
-            'title': title,
-            'description': description,
-            'developer': developer,
-            'num_conversations': num_conversations,
-            'category': category,
-            'rating_value': rating_value,
-            'num_ratings': num_ratings,
-            'sample_prompts': sample_prompts,
-            'chat_url': chat_url
-        })
-        break
-        # Go back to the search results page
-        # await page.goBack({'waitUntil': 'networkidle2'})
+            # Wait for the spinner to disappear (meaning results have been found)
+            await page.waitForFunction('document.querySelector("svg.animate-spin") === null')
+
+            # Wait for the GPT details page to load
+            await page.waitForSelector('div.text-2xl.font-semibold', {'visible': True})
+
+            # Retrieve the category
+            category = await page.evaluate('''() => {
+                const elements = Array.from(document.querySelectorAll('div'));
+                const matchingElements = elements.filter(el => el.classList.contains('flex') &&
+                                                               el.classList.contains('flex-row') &&
+                                                               el.classList.contains('items-center') &&
+                                                               el.classList.contains('gap-1.5') &&
+                                                               el.classList.contains('pt-1') &&
+                                                               el.classList.contains('text-xl') &&
+                                                               el.classList.contains('font-semibold') &&
+                                                               el.classList.contains('text-center') &&
+                                                               el.classList.contains('leading-none'));
+                const categoryElement = matchingElements.length > 1 ? matchingElements[1] : null;
+                return categoryElement ? categoryElement.innerText.trim() : '';
+            }''')
+
+            rating_value = await page.evaluate('''() => {
+                const elements = Array.from(document.querySelectorAll('div'));
+                const matchingElements = elements.filter(el => el.classList.contains('flex') &&
+                                                               el.classList.contains('flex-row') &&
+                                                               el.classList.contains('items-center') &&
+                                                               el.classList.contains('gap-1.5') &&
+                                                               el.classList.contains('pt-1') &&
+                                                               el.classList.contains('text-xl') &&
+                                                               el.classList.contains('font-semibold') &&
+                                                               el.classList.contains('text-center') &&
+                                                               el.classList.contains('leading-none'));
+                const categoryElement = matchingElements.length > 1 ? matchingElements[0] : null;
+                return categoryElement ? categoryElement.innerText.trim() : '';
+            }''')
+
+            num_ratings = await page.evaluate('''() => {
+                const elements = Array.from(document.querySelectorAll('div'));
+                const ratingElement = elements.find(el => el.innerText && el.innerText.includes('Valoraciones'));
+                return ratingElement ? ratingElement.innerText.match(/(\d+)\+/)?.[0] : null;
+            }''')
+
+            sample_prompts = await page.evaluate('''() => {
+                const elements = Array.from(document.querySelectorAll('a[href*="?q="]'));
+                return elements.map(el => el.innerText.trim());
+            }''')
+
+            chat_url = await page.evaluate('''() => {
+                const button = document.querySelector('a.btn-primary[href*="/g/"]');
+                return button ? button.href : null;
+            }''')
+
+            timestamp = datetime.utcnow().isoformat()  # Generate the timestamp in Python
+
+            gpts.append({
+                'title': title,
+                'description': description,
+                'developer': developer,
+                'num_conversations': num_conversations,
+                'category': category,
+                'rating_value': rating_value,
+                'num_ratings': num_ratings,
+                'sample_prompts': sample_prompts,
+                'chat_url': chat_url,
+                'timestamp': timestamp
+            })
+
+            # Close the popup window
+            close_button = await page.querySelector('button[data-testid="close-button"]')
+            if close_button:
+                await close_button.click()
+
+    # Initial data gathering
+    await gather_gpt_data()
+
+    # Click the "Ver más" button up to max_clicks times
+    for _ in range(max_clicks):
+        try:
+            # Click the "Ver más" button if it exists
+            await page.waitForSelector('button.btn-secondary', {'visible': True, 'timeout': 10000})
+            ver_mas_button = await page.querySelector('button.btn-secondary')
+            if ver_mas_button:
+                await ver_mas_button.click()
+                # await page.waitForSelector('svg.animate-spin', {'visible': True})
+                await page.waitForFunction('document.querySelector("svg.animate-spin") === null')
+                await gather_gpt_data()
+            else:
+                break
+        except:
+            break
 
     return gpts
 
