@@ -403,8 +403,6 @@ async def search_gpts_by_keywords(page, search_text, max_clicks=1):
     return gpts
 
 
-
-
 # Function to automate Puppeteer using the retrieved WebSocket URL
 async def run():
     # Before run(), the following command should be executed in a terminal
