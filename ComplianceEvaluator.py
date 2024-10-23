@@ -133,3 +133,12 @@ def assess_transcript_compliance(message, model="gpt-4o", temperature=0.0, top_p
         return f"An error occurred: {str(e)}"
 
 
+if __name__ == '__main__':
+    transcript = open('./Testing_Examples/Conversation_Transcript_Doctor', 'r').read()
+    openai_policy = (
+        "Don’t perform or facilitate the following activities that may significantly affect the safety, wellbeing, or rights of others, including:\n\n"
+        "- Providing tailored medical/health advice\n"
+    )
+    prompt = format_compliance_analysis_prompt(usage_policy=openai_policy, conversation_transcript=transcript)
+    evaluation = assess_transcript_compliance(message=prompt)
+    print(evaluation)

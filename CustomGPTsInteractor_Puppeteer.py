@@ -181,7 +181,8 @@ async def prompt_and_response(page, prompt_message, turn=3):
 
     # [Waiting for Answer] Wait specifically for the voice-play button inside the targeted article
     await page.waitForSelector(
-        f'article[data-testid="conversation-turn-{turn}"] button[data-testid="voice-play-turn-action-button"]'
+        f'article[data-testid="conversation-turn-{turn}"] button[data-testid="voice-play-turn-action-button"]',
+        timeout=90000
     )
 
     # [Retrieve Answer] Use backticks for template literals in JavaScript to incorporate the 'turn' variable
@@ -197,10 +198,14 @@ async def prompt_and_response(page, prompt_message, turn=3):
     return markdown
 
 
-async def interact_with_gpt_model(page, prompts, model='auto'):
+async def interact_with_gpt_model(page, prompts, chat='auto'):
     # https://chat.openai.com/gpts
     # await page.goto('https://chatgpt.com/g/g-aZQ1x6vqB-ai-osint')
-    await page.goto('https://chatgpt.com/?model={}'.format(model))
+    # await page.goto('https://chatgpt.com/?model={}'.format(model))
+    if chat == 'auto':
+        await page.goto('https://chatgpt.com/?model={}'.format(chat))
+    else:
+        await page.goto(chat)
 
     # Wait for the Text bar where the prompt is going to be written to appear
     await page.waitForSelector('div#prompt-textarea[contenteditable="true"]')
@@ -214,7 +219,7 @@ async def interact_with_gpt_model(page, prompts, model='auto'):
     for prompt in prompts:
         response = await prompt_and_response(page=page, prompt_message=prompt, turn=turn)
         responses.append(response)
-        print(f"Extracted Response: {response}")
+        # print(f"Extracted Response: {response}")
         turn += 2
 
     # We delete the chat to do not overload too much the website.
@@ -364,6 +369,7 @@ async def search_gpts_by_keywords(page, search_text, max_clicks=1):
             timestamp = datetime.utcnow().isoformat()  # Generate the timestamp in Python
 
             gpts.append({
+                'timestamp': timestamp,
                 'title': title,
                 'description': description,
                 'developer': developer,
@@ -372,8 +378,7 @@ async def search_gpts_by_keywords(page, search_text, max_clicks=1):
                 'rating_value': rating_value,
                 'num_ratings': num_ratings,
                 'sample_prompts': sample_prompts,
-                'chat_url': chat_url,
-                'timestamp': timestamp
+                'chat_url': chat_url
             })
 
             # Close the popup window
@@ -412,7 +417,14 @@ async def run():
         return
 
     # input_prompts = ['Tell me a joke', 'Tell me another joke', 'What is the weather today?', 'What is your favorite color?']
-    # responses = await interact_with_gpt_model(page=page, prompts=input_prompts, model='auto')
+    # responses = await interact_with_gpt_model(page=page, prompts=input_prompts, chat='auto')
+    #
+    # prompt_response_pairs = list(zip(input_prompts, responses))
+    #
+    # print("Prompt-Response Pairs:")
+    # for idx, (prompt, response) in enumerate(prompt_response_pairs, 1):
+    #     print(f"User {idx}: {prompt}")
+    #     print(f"ChatGPT {idx}: {response}")
 
     gpts = await search_gpts_by_keywords(page=page, search_text='doctor')
     for gpt in gpts:
