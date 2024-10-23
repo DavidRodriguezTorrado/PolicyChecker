@@ -9,51 +9,36 @@ import json
 
 async def main(keyword, output_csv, openai_policy):
     # Get GPTs and store them in a CSV, and return the GPTs list
+    print("[INFO] Retrieving GPTs based on keyword...")
     gpts = await get_gpts_and_store_in_csv(keyword, output_csv)
 
     # Generate red-teaming prompts for the first GPT and interact with it
     if gpts:
+        print("[INFO] Generating red-teaming prompts...")
         red_team_prompts = generate_red_teaming_prompts_quick(gpts[0]) # Change this one in the final implementation
         if red_team_prompts:
+            print("[INFO] Interacting with GPT...")
             prompt_response_pairs = await interact_with_gpt(gpts[0], red_team_prompts[:2])
-            # Print prompt-response pairs
-            print("Prompt-Response Pairs:")
             conversation_text = ""
             for idx, (prompt, response) in enumerate(prompt_response_pairs, 1):
-                print(f"Prompt {idx}: {prompt}")
-                print(f"Response {idx}: {response}")
                 conversation_text += f"User: {prompt}\n\nCustom GPT: {response}\n\n"
-            print("Conversation Text:")
-            print(conversation_text)
 
             # Pass the conversation text to the compliance assessment function
+            print("[INFO] Evaluating compliance of the conversation...")
             compliance_evaluator_prompt = format_compliance_analysis_prompt(usage_policy=openai_policy, conversation_transcript=conversation_text)
             compliance_evaluation = assess_transcript_compliance(message=compliance_evaluator_prompt)
-            print("Compliance Evaluation:")
-            print(compliance_evaluation)
-
-            # Print the compliance assessment results
-            if isinstance(compliance_evaluation, dict):
-                compliance_status = compliance_evaluation.get("compliance_status", "Unknown")
-                print(f"Compliance Status: {compliance_status}")
-
-                evidence_details = compliance_evaluation.get("evidence_details", [])
-                for evidence in evidence_details:
-                    print(f"Evidence ID: {evidence['evidence_id']}")
-                    print(f"Policy Excerpt: {evidence['policy_excerpt']}")
-                    print(f"Transcript Excerpt: {evidence['transcript_excerpt']}")
-                    print(f"Reasoning: {evidence['reasoning']}\n")
-            else:
-                print("Error or unexpected response:", compliance_evaluation)
 
             # Store the results in a CSV file
+            print("[INFO] Storing the results in CSV...")
             store_results_in_csv(gpts[0], red_team_prompts[:2], conversation_text, compliance_evaluation)
+            print("[INFO] Results stored successfully.")
+
 
 async def get_gpts_and_store_in_csv(keyword, output_csv):
     # Initialize browser and page
     browser, page = await initialize_browser()
     if not browser or not page:
-        print("Failed to initialize the browser.")
+        print("[ERROR] Failed to initialize the browser.")
         return []
 
     try:
@@ -70,11 +55,11 @@ async def get_gpts_and_store_in_csv(keyword, output_csv):
             for gpt in gpts:
                 writer.writerow(gpt)
 
-        print(f"Successfully stored {len(gpts)} GPTs in {output_csv}")
+        print(f"[INFO] Successfully stored {len(gpts)} GPTs in {output_csv}")
         return gpts
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"[ERROR] An error occurred: {e}")
         return []
     finally:
         # Close the browser
@@ -88,18 +73,10 @@ def generate_red_teaming_prompts(gpt, openai_policy):
 
     # Generate a red-teaming prompt
     red_team_prompt = prompt_to_query_red_team_prompts(target_description, openai_policy)
-    print('Target description:\n', target_description+'\n')
 
     # Get the structured response from ChatGPT for the generated prompt
     response = query_red_team_prompts(red_team_prompt)
 
-    # Print the structured response
-    if isinstance(response, RedTeamPrompts):
-        print("Red-Teaming Prompts:")
-        for i, prompt in enumerate(response.prompts, 1):
-            print(f"Prompt {i}: {prompt}")
-    else:
-        print(f"Error: {response}")
     return response
 
 
@@ -122,7 +99,7 @@ async def interact_with_gpt(gpt, prompts):
     # Initialize browser and page to interact with the GPT model
     browser, page = await initialize_browser()
     if not browser or not page:
-        print("Failed to initialize the browser for interaction.")
+        print("[ERROR] Failed to initialize the browser for interaction.")
         return []
     prompt_response_pairs = []
     try:
@@ -133,7 +110,7 @@ async def interact_with_gpt(gpt, prompts):
         prompt_response_pairs = list(zip(prompts, responses))
 
     except Exception as e:
-        print(f"An error occurred during interaction: {e}")
+        print(f"[ERROR] An error occurred during interaction: {e}")
     finally:
         # Close the browser
         # await browser.close()
@@ -162,7 +139,7 @@ def store_results_in_csv(gpt, prompts, conversation_text, compliance_evaluation)
             'evidence_details': json.dumps(compliance_evaluation.get("evidence_details", [])) if isinstance(compliance_evaluation, dict) else "N/A"
         })
 
-    print(f"Results stored in {results_csv}")
+    print(f"[INFO] Results stored in {results_csv}")
 
 
 if __name__ == "__main__":
