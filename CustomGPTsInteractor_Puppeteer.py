@@ -319,42 +319,41 @@ async def search_gpts_by_keywords(page, search_text, max_clicks=1):
             # Wait for the GPT details page to load
             await page.waitForSelector('div.text-2xl.font-semibold', {'visible': True})
 
-            # Retrieve the category
-            category = await page.evaluate('''() => {
-                const elements = Array.from(document.querySelectorAll('div'));
-                const matchingElements = elements.filter(el => el.classList.contains('flex') &&
-                                                               el.classList.contains('flex-row') &&
-                                                               el.classList.contains('items-center') &&
-                                                               el.classList.contains('gap-1.5') &&
-                                                               el.classList.contains('pt-1') &&
-                                                               el.classList.contains('text-xl') &&
-                                                               el.classList.contains('font-semibold') &&
-                                                               el.classList.contains('text-center') &&
-                                                               el.classList.contains('leading-none'));
-                const categoryElement = matchingElements.length > 1 ? matchingElements[1] : null;
-                return categoryElement ? categoryElement.innerText.trim() : '';
+            # Retrieve the values within the dialog div
+            elements_data = await page.evaluate('''() => {
+                const data = {};
+                const dialog = document.querySelector('div[role="dialog"]');
+                if (!dialog) return data;
+                const elements = Array.from(dialog.querySelectorAll('div.flex.flex-col.items-center'));
+                elements.forEach(el => {
+                    const header = el.querySelector('div.text-xl.font-semibold.text-center');
+                    const description = el.querySelector('div.text-xs.text-token-text-tertiary');
+                    if (header && description) {
+                        const headerText = header.innerText.trim();
+                        const descriptionText = description.innerText.trim();
+                        // Check if this element is the rating value
+                        if (headerText.match(/^\d+\.\d+$/) && descriptionText.includes('Valoraciones')) {
+                            data.ratingValue = headerText;
+                            const numRatingsMatch = descriptionText.match(/\((\d+\+)\)/);
+                            data.numRatings = numRatingsMatch ? numRatingsMatch[1] : '';
+                        } 
+                        // Check if this element is the conversation count
+                        else if (descriptionText.includes('Conversaciones')) {
+                            data.numConversations = headerText;
+                        } 
+                        // Check if this element is the category
+                        else if (descriptionText.includes('Categoría')) {
+                            data.category = headerText;
+                        }
+                    }
+                });
+                return data;
             }''')
 
-            rating_value = await page.evaluate('''() => {
-                const elements = Array.from(document.querySelectorAll('div'));
-                const matchingElements = elements.filter(el => el.classList.contains('flex') &&
-                                                               el.classList.contains('flex-row') &&
-                                                               el.classList.contains('items-center') &&
-                                                               el.classList.contains('gap-1.5') &&
-                                                               el.classList.contains('pt-1') &&
-                                                               el.classList.contains('text-xl') &&
-                                                               el.classList.contains('font-semibold') &&
-                                                               el.classList.contains('text-center') &&
-                                                               el.classList.contains('leading-none'));
-                const categoryElement = matchingElements.length > 1 ? matchingElements[0] : null;
-                return categoryElement ? categoryElement.innerText.trim() : '';
-            }''')
-
-            num_ratings = await page.evaluate('''() => {
-                const elements = Array.from(document.querySelectorAll('div'));
-                const ratingElement = elements.find(el => el.innerText && el.innerText.includes('Valoraciones'));
-                return ratingElement ? ratingElement.innerText.match(/(\d+)\+/)?.[0] : null;
-            }''')
+            rating_value = elements_data.get('ratingValue', '')
+            num_ratings = elements_data.get('numRatings', '')
+            category = elements_data.get('category', '')
+            num_conversations_detail = elements_data.get('numConversations', '')
 
             sample_prompts = await page.evaluate('''() => {
                 const elements = Array.from(document.querySelectorAll('a[href*="?q="]'));
@@ -373,7 +372,7 @@ async def search_gpts_by_keywords(page, search_text, max_clicks=1):
                 'title': title,
                 'description': description,
                 'developer': developer,
-                'num_conversations': num_conversations,
+                'num_conversations': num_conversations_detail or num_conversations,
                 'category': category,
                 'rating_value': rating_value,
                 'num_ratings': num_ratings,
@@ -426,7 +425,7 @@ async def run():
     #     print(f"User {idx}: {prompt}")
     #     print(f"ChatGPT {idx}: {response}")
 
-    gpts = await search_gpts_by_keywords(page=page, search_text='doctor')
+    gpts = await search_gpts_by_keywords(page=page, search_text='doctor', max_clicks=0)
     for gpt in gpts:
         print(gpt)
 
